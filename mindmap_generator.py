@@ -19,6 +19,10 @@ from anthropic import AsyncAnthropic
 from google import genai
 from fuzzywuzzy import fuzz
 from decouple import Config as DecoupleConfig, RepositoryEnv
+from dotenv import load_dotenv
+load_dotenv()
+from openai import AsyncAzureOpenAI
+
 
 config = DecoupleConfig(RepositoryEnv('.env'))
 
@@ -93,18 +97,31 @@ def get_logger():
 
 logger = get_logger()
 
+from dotenv import dotenv_values
+
+
 class Config:
     """Minimal configuration for document processing."""
-    # API configuration
+    config = dotenv_values(".env")
+
+    # API Keys
     OPENAI_API_KEY = config.get("OPENAI_API_KEY")
-    ANTHROPIC_API_KEY = config.get('ANTHROPIC_API_KEY')
-    DEEPSEEK_API_KEY = config.get('DEEPSEEK_API_KEY')
-    GEMINI_API_KEY = config.get('GEMINI_API_KEY')  # Add Gemini API key
-    API_PROVIDER = config.get('API_PROVIDER') # "OPENAI", "CLAUDE", "DEEPSEEK", or "GEMINI"
+    OPENAI_API_TYPE = config.get("OPENAI_API_TYPE", "openai")
+    OPENAI_API_BASE = config.get("OPENAI_API_BASE")
+    OPENAI_API_VERSION = config.get("OPENAI_API_VERSION")
+    OPENAI_API_ENGINE = config.get("OPENAI_API_ENGINE")
+    OPENAI_API_EMBEDDING_ENGINE = config.get("OPENAI_API_EMBEDDING_ENGINE")
     
-    # Model settings
+    ANTHROPIC_API_KEY = config.get("ANTHROPIC_API_KEY")
+    DEEPSEEK_API_KEY = config.get("DEEPSEEK_API_KEY")
+    GEMINI_API_KEY = config.get("GEMINI_API_KEY")
+    
+    # LLM Selection
+    API_PROVIDER = config.get("API_PROVIDER")  # OPENAI, CLAUDE, etc.
+    
+    # Model strings
     CLAUDE_MODEL_STRING = "claude-3-5-haiku-latest"
-    OPENAI_COMPLETION_MODEL = "gpt-4o-mini-2024-07-18"
+    OPENAI_COMPLETION_MODEL = OPENAI_API_ENGINE or "gpt-4o-mini-2024-07-18"
     DEEPSEEK_COMPLETION_MODEL = "deepseek-chat"  # "deepseek-reasoner" or "deepseek-chat"
     DEEPSEEK_CHAT_MODEL = "deepseek-chat"
     DEEPSEEK_REASONER_MODEL = "deepseek-reasoner"
@@ -340,17 +357,23 @@ class TokenUsageTracker:
 class DocumentOptimizer:
     """Minimal document optimizer that only implements what's needed for mindmap generation."""
     def __init__(self):
-        self.openai_client = AsyncOpenAI(api_key=Config.OPENAI_API_KEY)
+
+        self.openai_client = AsyncAzureOpenAI(
+        api_key=os.environ["OPENAI_API_KEY"],
+        api_version=os.environ["OPENAI_API_VERSION"],
+        azure_endpoint=os.environ["OPENAI_API_BASE"]
+)
         self.anthropic_client = AsyncAnthropic(api_key=Config.ANTHROPIC_API_KEY)
         self.deepseek_client = AsyncOpenAI(
             api_key=Config.DEEPSEEK_API_KEY,
             base_url="https://api.deepseek.com"
         )
         # Initialize Google GenAI client - no need for configure method
-        self.gemini_client = genai.Client(
-            api_key=Config.GEMINI_API_KEY,
-            http_options={"api_version": "v1alpha"}
-        )
+        if Config.API_PROVIDER == "GEMINI":
+            if not Config.GEMINI_API_KEY:
+                raise ValueError("GEMINI_API_KEY is missing in environment variables.")
+            self.gemini_client = genai.Client(api_key=Config.GEMINI_API_KEY)
+
         self.token_tracker = TokenUsageTracker()
         
     async def generate_completion(self, prompt: str, max_tokens: int = 5000, request_id: str = None, task: Optional[str] = None) -> Optional[str]:
@@ -440,7 +463,7 @@ class DocumentOptimizer:
                 return response_text
             elif Config.API_PROVIDER == "OPENAI":
                 response = await self.openai_client.chat.completions.create(
-                    model=Config.OPENAI_COMPLETION_MODEL,
+                    model=os.environ["OPENAI_API_ENGINE"],
                     messages=[{"role": "user", "content": prompt}],
                     max_tokens=max_tokens,
                     temperature=0.7
@@ -1832,6 +1855,58 @@ class MindMapGenerator:
         
         return text
 
+            # ------------------------------------------------------------------ #
+    #  STEP 1 – NEW: pull out the meaningful keywords for node captions  #
+    # ------------------------------------------------------------------ #
+    def _extract_keywords(self, text: str, max_keywords: int = 4) -> str:
+        """
+        Return up to `max_keywords` informative keywords from *text*.
+        • drops obvious stop-words
+        • keeps original order / casing
+        • ignores pure numbers
+        • falls back gracefully if nothing left
+        """
+        stop_words = {
+            'the','a','an','and','or','but','of','in','on','at','for','to','with',
+            'by','as','is','are','was','were','be','been','this','that','these',
+            'those','from','it','its','their','there','into','about','across',
+            'than','which','use','using','used'
+        }
+        tokens = re.findall(r"\b\w[\w'-]*\b", text)
+        
+        nounish = re.compile(r"(tion|ment|ity|ness|ism|ship|age|ence|ance|ing|s)$", re.I)
+
+        chunks, buf = [], []
+        for tok in tokens + ["★"]:                 # sentinel to flush buffer
+            low = tok.lower()
+            if low in stop_words or tok.isdigit():
+                tok_type = "stop"
+            elif nounish.search(tok) or tok[0].isupper():
+                tok_type = "noun"
+            else:
+                tok_type = "other"
+
+            if tok_type == "noun":
+                buf.append(tok)
+            else:
+                if buf:
+                    chunks.append(" ".join(buf))
+                    buf = []
+                if tok_type == "other":
+                    chunks.append(tok)
+
+        # Deduplicate while keeping order, trim length
+        seen, keywords = set(), []
+        for phrase in chunks:
+            if phrase not in seen:
+                seen.add(phrase)
+                keywords.append(phrase)
+            if len(keywords) >= max_keywords:
+                break
+
+        return " ".join(keywords[:max_keywords])
+
+
     def _format_node_line(self, node: Dict[str, Any], indent_level: int) -> str:
         """Format a single node in Mermaid syntax."""
         indent = '    ' * indent_level
@@ -1845,11 +1920,11 @@ class MindMapGenerator:
             # For detail nodes
             importance = node.get('importance', 'low')
             marker = {'high': '♦️', 'medium': '🔸', 'low': '🔹'}[importance]
-            text = self._escape_text(node['text'])
+            text = self._escape_text(self._extract_keywords(node['text'], max_keywords=6))
             return f"{indent}[{marker} {text}]"
         else:
             # For topic and subtopic nodes
-            node_name = self._escape_text(node['name'])
+            node_name = self._escape_text(self._extract_keywords(node['name']).title())
             emoji = node.get('emoji', '')
             if emoji and node_name:
                 node_name = f"{emoji} {node_name}"
@@ -4417,7 +4492,7 @@ async def process_text_file(filepath: str):
         raise
     
 async def main():
-    input_file = "sample_input_document_as_markdown__durnovo_memo.md"  # <-- Change this to your input file path
+    input_file = "health.md"  # <-- Change this to your input file path
     # input_file = "sample_input_document_as_markdown__small.md"
     try:
         if not os.path.exists(input_file):

@@ -1,0 +1,58 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <title>Mermaid Mindmap</title>
+  <!-- Tailwind CSS -->
+  <link href="https://cdn.jsdelivr.net/npm/tailwindcss@2.2.19/dist/tailwind.min.css" rel="stylesheet">
+  <!-- Mermaid JS -->
+  <script src="https://cdn.jsdelivr.net/npm/mermaid@11.4.0/dist/mermaid.min.js"></script>
+  <style>
+    body {
+      margin: 0;
+      padding: 0;
+    }
+    #mermaid {
+      width: 100%;
+      height: calc(100vh - 64px); /* Adjust height considering header */
+      overflow: auto;
+    }
+  </style>
+</head>
+<body class="bg-gray-100">
+  <div class="flex items-center justify-between p-4 bg-white shadow">
+    <h1 class="text-xl font-bold">Mermaid Mindmap</h1>
+    <a href="https://mermaid.live/edit#pako:eNqVU8tu2zAQ_JWFLkmAHoI4MNLe8gAaAzV66KGH2oc1uZIW5UPginLdIP_epaS0KWrAKQ8iRVGzM7PDp8pES9UHqDwH67HbBNBxfr7J9mZh9WnM9cXFtPvy5Wr5frnJNV3WcBftAdYoAqtg6QfceYYHqjlwzzHAPTqTHU5rp8e4ZjO9vgYdgV9VRPg8UBqY9v8D-DdeGd8K1-VvrusVhOwp6R8OPKHkRGBmRLJgeWDLoYGOksRwJtu3QA7oMgmYmY3iKCFqYmLdlWxayGpN2hM3bQ8hJo_uOPCs3y5uQHoMFpPlnyPeH9HoXNxrtRiEpafQ69J3mFgJw650Yyq0_cfdqyVezrQfCV3fwsp3bnZP4BN77ud1Mf0tdp4JJHKMwRBIdOReqkM7Ta6ACqAxOaE5bI-1nIpku4AvHRnWxtwXaWrYzOWB65pSEXrbEHxMMXcCt66nFPTEQLCeGimnGaPNrrBp1NMDYdLlLipC6WLC0NDJfn9FNR0MJ5P9yEqF-6gp6pKSl3G2bPqY1IHRY23M95PdNk7zXUKpESIRr2oFqARLJWoed1GRCsv9kfpdihpbkm31Tm8xabzY6oV-qvqW_Hi1LdWoyqvn5193GkSu" target="_blank" id="editButton" class="px-4 py-2 bg-blue-500 text-white rounded hover:bg-blue-600">Edit in Mermaid Live Editor</a>
+  </div>
+  <div id="mermaid" class="p-4">
+    <pre class="mermaid">
+mindmap
+    ((📄))
+        ((⚖️ Body Mass Index Bmi Definition Calculation Classification ))
+            (📊 Overview Bmi Definition Calculation Classification )
+                [♦️ BMI numerical measure calculated dividing person's]
+                [♦️ BMI values classified categories such underweight normal]
+                [🔸 standardized calculation allows consistent comparison body weight]
+            (⚠️ Health Implications Limitations Bmi )
+                [♦️ BMI's reliance solely weight height limits accuracy]
+            (🧓 Special Considerations Different Age Groups Alternative Measures )
+                [♦️ adults aged years above BMI range]
+                [♦️ Waist circumference more precise predictor health risk]
+                [🔸 clinical assessments evaluating both BMI waist circumference provides]
+    </pre>
+  </div>
+  <script>
+    mermaid.initialize({
+      startOnLoad: true,
+      securityLevel: 'loose',
+      theme: 'default',
+      mindmap: {
+        useMaxWidth: true
+      },
+      themeConfig: {
+        controlBar: true
+      }
+    });
+  </script>
+</body>
+</html>
