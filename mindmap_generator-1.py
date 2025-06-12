@@ -24,6 +24,38 @@ from dotenv import load_dotenv
 load_dotenv()
 from openai import AsyncAzureOpenAI
 
+import spacy
+nlp = spacy.load("en_core_web_sm")
+
+def summarize_phrase(text: str, keep: int = 2) -> str:
+    """
+    Return up to `keep` informative nouns / noun-phrases, de-duplicated.
+    Example: "BMI is associated with multiple health factors"
+             → "BMI · health factor"
+    """
+    doc = nlp(text)
+
+    # 1️⃣  collect head nouns of each chunk (they're usually the key concepts)
+    heads = [chunk.root.lemma_.lower() for chunk in doc.noun_chunks]
+
+    # 2️⃣  post-process: drop stop-words, digits, very short tokens
+    heads = [h for h in heads if len(h) > 2 and not h.isdigit()]
+
+    # 3️⃣  keep order of appearance but deduplicate
+    seen, clean = set(), []
+    for h in heads:
+        if h not in seen:
+            seen.add(h)
+            clean.append(h)
+
+    # 4️⃣  pick the first `keep` items and title-case for display
+    if clean:
+        return " · ".join(w.title() for w in clean[:keep])
+
+    # Fallback: just return the first `keep` content words
+    words = re.findall(r"[A-Za-z']+", text)[:keep]
+    return " ".join(words).title()
+
 
 
 config = DecoupleConfig(RepositoryEnv('.env'))
@@ -4304,19 +4336,20 @@ class MindMapGenerator:
                 .mm-toggle-text{{font-size:14px;font-weight:800;
                                 text-anchor:middle;dominant-baseline:middle;
                                 fill:#7b8cff;pointer-events:none}}
+                .markmap text.markmap-text {{font-size: 12px;font-variant: small-caps;letter-spacing: .4px;}}
             </style>
             </head>
 
             <body>
             <pre class="markmap">
-            ---
+---
 markmap:
   initialExpandLevel: 2          
   paddingX: 48
   spacingVertical: 50
   spacingHorizontal: 100
 ---
-            {md_text}
+{md_text}
             </pre>
 
             <script src="https://cdn.jsdelivr.net/npm/markmap-autoloader"></script>
@@ -4434,7 +4467,7 @@ markmap:
                     if markdown_lines:  # Add extra newline between main topics
                         markdown_lines.append("")
                     current_topic = node_text.group(1).strip()
-                    markdown_lines.append(f"# {current_topic}")
+                    markdown_lines.append(f"# {summarize_phrase(current_topic)}")
                     markdown_lines.append("")  # Add blank line after topic
                     
             elif indent_level == 3:  # Subtopics
@@ -4444,7 +4477,7 @@ markmap:
                     if markdown_lines and not markdown_lines[-1].startswith("#"):
                         markdown_lines.append("")
                     current_subtopic = node_text.group(1).strip()
-                    markdown_lines.append(f"## {current_subtopic}")
+                    markdown_lines.append(f"## {summarize_phrase(current_subtopic)}")
                     markdown_lines.append("")  # Add blank line after subtopic
                     
             elif indent_level == 4:  # Details
@@ -4452,9 +4485,10 @@ markmap:
                 node_text = re.search(r'\[(.*?)\]', content)
                 if node_text:
                     detail_text = node_text.group(1).strip()
-                    markdown_lines.append(detail_text)
+                    markdown_lines.append(summarize_phrase(detail_text, keep=3))
                     markdown_lines.append("")  # Add blank line after each detail
-        
+       
+
         # Join lines with proper spacing
         markdown_text = "\n".join(markdown_lines)
         
@@ -4468,9 +4502,11 @@ markmap:
         
         return markdown_text.strip()
     
-    def _add_md_line(self, md_lines: list[str], level: int, text: str) -> None:
+    def _add_md_line(self, md: list[str], level: int, text: str) -> None:
         """Append one Markdown heading (#…#) corresponding to the depth."""
-        md_lines.append("#" * level + " " + text)
+        k = 1 if level >= 4 else 2 
+        md.append("#" * level + " " + summarize_phrase(text, keep=k))
+
 
     def _build_markdown(self, tree: dict) -> str:
         """
