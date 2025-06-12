@@ -171,4 +171,5 @@ folder_of_source_documents__converted_to_plaintext
 venv/
 .env
 emoji_cache.json
-.env
+
+.env/
