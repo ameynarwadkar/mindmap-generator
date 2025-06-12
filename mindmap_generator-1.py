@@ -25,6 +25,7 @@ load_dotenv()
 from openai import AsyncAzureOpenAI
 
 
+
 config = DecoupleConfig(RepositoryEnv('.env'))
 
 def get_logger():
